@@ -2,91 +2,93 @@
 
 Firebase非依存のイベントソーシングライブラリ。モナディックなAPI、LWW競合解決、木構造の履歴管理を提供する。
 
-## 実装計画
+## 必要環境
 
-設計ドキュメント: `/Users/hiroki/Documents/project-doc.md`
+- Node.js >= 24
+- npm
 
-### Step 1: プロジェクト初期化 ✅
+[mise](https://mise.jdx.dev/) を使用している場合は `.mise.toml` で自動的に Node.js 24 が適用される。
 
-- `package.json`, `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`, `biome.json`, `.mise.toml` 作成済み
-- `npm install` 完了済み
+## セットアップ
 
-### Step 2: Either モナド
+```bash
+npm install
+```
 
-- `src/monad/either.ts` — Left/Right, map, flatMap, match, tryCatch, fromNullable, Do, bind
-- `src/monad/either.test.ts`
-- `src/monad/index.ts`
+Zod は peerDependency のため、利用側で別途インストールが必要。
 
-### Step 3: 型定義
+```bash
+npm install zod
+```
 
-- `src/types/event.ts` — EventMetadata, DomainEvent, CompensatingEvent, EventDefinition, EventHandler
-- `src/types/state.ts` — LWWValue, LWWRegister, Snapshot, ReplayResult
-- `src/types/history.ts` — HistoryNode, HistoryTree, UndoRedoOptions
-- `src/types/index.ts`
+## スクリプト
 
-### Step 4: イベントメタデータ & defineEvent
+| コマンド | 説明 |
+|---|---|
+| `npm run build` | Vite ライブラリモードでビルド（`dist/` に出力） |
+| `npm test` | Vitest をウォッチモードで起動 |
+| `npm run test:run` | テストを1回実行 |
+| `npm run test:coverage` | カバレッジ付きでテスト実行 |
+| `npm run lint` | Biome で静的解析 |
+| `npm run lint:fix` | Biome で静的解析 + 自動修正 |
+| `npm run format` | Biome でフォーマット |
 
-- `src/event/metadata.ts` — Zodスキーマ, createMetadata, validateMetadata
-- `src/event/define-event.ts` — defineEvent(), safeCreateEvent()
-- `src/event/metadata.test.ts`
-- `src/event/define-event.test.ts`
-- `src/event/index.ts`
+## 公開API
 
-### Step 5: LWW 競合解決
+### Monad
 
-- `src/state/lww.ts` — resolveLWW, mergeLWWRegisters, materialize
-- `src/state/lww.test.ts`
-- テスト: タイムスタンプ比較, 同一タイムスタンプ時のID比較, プロパティ単位マージ
+| 関数 | 説明 |
+|---|---|
+| `left(value)` / `right(value)` | Either コンストラクタ |
+| `isLeft(either)` / `isRight(either)` | 型ガード |
+| `map(either, f)` | Right 値を変換 |
+| `flatMap(either, f)` | Right 値に Either を返す関数を適用（短絡評価） |
+| `match(either, { onLeft, onRight })` | パターンマッチ |
+| `tryCatch(f)` | try-catch を Either に変換 |
+| `fromNullable(value, onNull)` | null/undefined を Left に変換 |
+| `Do` / `bind(either, name, f)` | モナディック Do 記法 |
 
-### Step 6: apply
+### Event
 
-- `src/state/apply.ts` — apply(state, event, handler) => Either
-- `src/state/apply.test.ts`
-- テスト: 初期状態への適用, イミュータビリティ, LWW競合解決, 異常系
+| 関数 | 説明 |
+|---|---|
+| `defineEvent(type, schema)` | 型安全なイベント定義 |
+| `safeCreateEvent(def, metadata, payload)` | バリデーション付きイベント生成 |
+| `createMetadata(params)` | イベントメタデータ生成 |
+| `validateMetadata(input)` | メタデータの Zod バリデーション |
 
-### Step 7: pipe
+### State
 
-- `src/pipe/pipe.ts` — pipe(), liftHandler()
-- `src/pipe/pipe.test.ts`
-- `src/pipe/index.ts`
-- テスト: 合成, 短絡評価, エッジケース
+| 関数 | 説明 |
+|---|---|
+| `apply(state, event, handler)` | 状態にイベントを適用 |
+| `resolveLWW(a, b)` | LWW でどちらの値を採用するか判定 |
+| `mergeLWWRegisters(a, b)` | プロパティ単位で LWW マージ |
+| `materialize(register)` | LWWRegister から値を取り出す |
+| `sortEvents(events)` | タイムスタンプ + ID 順でソート |
+| `replay(events, handler, init)` | イベント列から状態を再構築 |
 
-### Step 8: HistoryTree
+### Pipe
 
-- `src/history/tree.ts` — createTree, appendNode, getPathToNode, moveHead, getAncestorsByUser
-- `src/history/tree.test.ts`
-- テスト: 木構造の作成, 分岐, パス辿り, ユーザーフィルタ
+| 関数 | 説明 |
+|---|---|
+| `pipe(state, steps)` | 複数のイベント適用を順に合成 |
+| `liftHandler(type, handler)` | イベント型でディスパッチするハンドラに変換 |
 
-### Step 9: compensate
+### History
 
-- `src/history/compensate.ts` — diffStates, compensate()
-- `src/history/compensate.test.ts`
-- テスト: Undo/Redo補償イベント生成, diff計算
-
-### Step 10: undo / redo / goTo
-
-- `src/history/undo-redo.ts` — undo, redo, goTo
-- `src/history/undo-redo.test.ts`
-- `src/history/index.ts`
-- テスト: 設計ドキュメントのシナリオ1-10に対応
-
-### Step 11: replay（内部）
-
-- `src/state/replay.ts` — sortEvents, replay()
-- `src/state/replay.test.ts`
-- `src/state/index.ts`
-
-### Step 12: barrel exports & ビルド確認
-
-- `src/index.ts` 及び各モジュールの `index.ts`
-- `npm run build` で正常にビルドされることを確認
-- `dist/index.js` と `dist/index.d.ts` が生成されること
-
-### Step 13: lint & テスト全体通過
-
-- `npm run lint` — Biome による静的解析通過
-- `npm run test:run` — 全ユニットテスト通過
-- `npm run build` — ビルド成功
+| 関数 | 説明 |
+|---|---|
+| `createTree(event)` | 初期イベントから履歴木を作成 |
+| `appendNode(tree, event)` | 木に子ノードを追加 |
+| `getPathToNode(tree, nodeId)` | root から指定ノードまでのパスを取得 |
+| `moveHead(tree, nodeId)` | head を指定ノードに移動 |
+| `getAncestorsByUser(tree, userId)` | 指定ユーザーの祖先イベントを取得 |
+| `diffStates(before, after)` | 状態の差分を計算 |
+| `compensate(before, after, metadata)` | 補償イベントを生成 |
+| `undo(tree, state, handler)` | 直近のイベントを取り消す |
+| `redo(tree, nodeId, state, handler)` | 指定ノードのイベントを再適用 |
+| `goTo(tree, nodeId, handler, init)` | 任意の履歴ノードにジャンプ |
 
 ## ディレクトリ構成
 
@@ -98,43 +100,15 @@ event-sourcing/
 ├── tsconfig.json
 ├── vite.config.ts
 ├── vitest.config.ts
+├── docs/
 ├── src/
 │   ├── index.ts
 │   ├── monad/
-│   │   ├── either.ts
-│   │   ├── either.test.ts
-│   │   └── index.ts
+│   ├── types/
 │   ├── event/
-│   │   ├── define-event.ts
-│   │   ├── define-event.test.ts
-│   │   ├── metadata.ts
-│   │   ├── metadata.test.ts
-│   │   └── index.ts
 │   ├── state/
-│   │   ├── apply.ts
-│   │   ├── apply.test.ts
-│   │   ├── lww.ts
-│   │   ├── lww.test.ts
-│   │   ├── replay.ts
-│   │   ├── replay.test.ts
-│   │   └── index.ts
-│   ├── history/
-│   │   ├── tree.ts
-│   │   ├── tree.test.ts
-│   │   ├── undo-redo.ts
-│   │   ├── undo-redo.test.ts
-│   │   ├── compensate.ts
-│   │   ├── compensate.test.ts
-│   │   └── index.ts
 │   ├── pipe/
-│   │   ├── pipe.ts
-│   │   ├── pipe.test.ts
-│   │   └── index.ts
-│   └── types/
-│       ├── event.ts
-│       ├── state.ts
-│       ├── history.ts
-│       └── index.ts
+│   └── history/
 └── dist/
 ```
 
